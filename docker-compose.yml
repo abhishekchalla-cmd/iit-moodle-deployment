@@ -1,0 +1,72 @@
+version: "4"
+
+volumes:
+  moodle_data:
+
+
+services:
+  app.db:
+    image: bitnami/mariadb:10.6
+    container_name: iml.mariadb
+    ports:
+      - "3306"
+    volumes:
+      - ./data/db:/bitnami/mariadb
+      - ./db_healthcheck.sh:/healthcheck.sh
+    environment:
+      ALLOW_EMPTY_PASSWORD: "${APP_DB_ALLOW_EMPTY_PASSWORD}"
+      MARIADB_USER: "${APP_DB_USER}"
+      MARIADB_PASSWORD: "${APP_DB_PASSWORD}"
+      MARIADB_DATABASE: "${APP_DB_NAME}"
+    healthcheck:
+      test: [ "CMD", "sh", "/healthcheck.sh" ]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+
+  proxy:
+    image: valian/docker-nginx-auto-ssl:1.2.0
+    container_name: iml.proxy
+    restart: on-failure
+    ports:
+      - "${PROXY_EXTERNAL_PORT_HTTP}:80"
+      - "${PROXY_EXTERNAL_PORT_HTTPS}:443"
+    volumes:
+      - ./data/proxy:/etc/resty-auto-ssl
+    environment:
+      ALLOWED_DOMAINS: "${ALLOWED_DOMAINS}"
+      SITES: "${SITES}"
+    depends_on:
+      - app.moodle
+      - build.handler
+
+  app.moodle:
+    image: bitnami/moodle:4.2.3
+    container_name: iml.moodle
+    ports:
+      - "8080"
+    environment:
+      ALLOW_EMPTY_PASSWORD: "${APP_DB_ALLOW_EMPTY_PASSWORD}"
+      MOODLE_DATABASE_TYPE: "mariadb"
+      MOODLE_DATABASE_HOST: "${APP_DB_HOST}"
+      MOODLE_DATABASE_PORT: "${APP_DB_PORT}"
+      MOODLE_DATABASE_USER: "${APP_DB_USER}"
+      MOODLE_DATABASE_PASSWORD: "${APP_DB_PASSWORD}"
+      MOODLE_DATABASE_NAME: "${APP_DB_NAME}"
+      MOODLE_USERNAME: "${MOODLE_USERNAME}"
+      MOODLE_PASSWORD: "${MOODLE_PASSWORD}"
+      BITNAMI_DEBUG: "true"
+    volumes:
+      - ./data/app:/bitnami
+    depends_on:
+      app.db:
+        condition: service_healthy
+
+  build.handler:
+    image: jenkins/jenkins:2.414.3-slim-jdk17
+    container_name: iml.build.handler
+    ports:
+      - "8080"
+    volumes:
+      - ./data/app:/app_data
+      - ./data/jenkins:/var/jenkins_home

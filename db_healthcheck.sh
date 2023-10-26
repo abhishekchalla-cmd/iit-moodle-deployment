@@ -1,0 +1,1 @@
+mysql -u $MARIADB_USER -p$MARIADB_PASSWORD -e "show databases;"
